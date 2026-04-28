@@ -62,6 +62,10 @@ router.post('/:id/subscribe', authenticate(['client']), async (req, res) => {
     res.status(201).json(subscription);
   } catch (err) {
     console.error(err);
+    const msg = err.message || '';
+    if (msg.includes('вже має активну підписку')) {
+      return res.status(409).json({ error: 'У вас вже є активна підписка. Дочекайтесь її завершення або скасуйте поточну.' });
+    }
     res.status(500).json({ error: 'Помилка сервера' });
   }
 });
