@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Administrator {
+  administrator_id Int                    @id @default(autoincrement())
+  full_name        String                 @db.VarChar(150)
+  email            String                 @unique @db.VarChar(100)
+  phone            String                 @unique @db.VarChar(20)
+  password_hash    String                 @db.VarChar(100)
+  sessions         AdministratorSession[]
+
+  @@index([email, password_hash], map: "idx_administrator_email_password_hash")
+  @@index([phone], map: "idx_administrator_phone")
+  @@map("administrators")
+}
+
+model AdministratorSession {
+  administrator_session_id Int           @id @default(autoincrement())
+  administrator_id         Int
+  refresh_token_hash       String        @unique @db.VarChar(255)
+  is_revoked               Boolean       @default(false)
+  expires_at               DateTime      @db.Timestamptz(6)
+  created_at               DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime      @default(now()) @db.Timestamptz(6)
+  administrator            Administrator @relation(fields: [administrator_id], references: [administrator_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("administrator_sessions")
+}
+
+model Client {
+  client_id     Int             @id @default(autoincrement())
+  full_name     String          @db.VarChar(150)
+  email         String          @unique @db.VarChar(100)
+  phone         String          @unique @db.VarChar(20)
+  password_hash String          @db.VarChar(100)
+  bookings      Booking[]
+  sessions      ClientSession[]
+  subscriptions Subscription[]
+
+  @@index([email, password_hash], map: "idx_client_email_password_hash")
+  @@index([phone], map: "idx_client_phone")
+  @@map("clients")
+}
+
+model ClientSession {
+  client_session_id  Int      @id @default(autoincrement())
+  client_id          Int
+  refresh_token_hash String   @unique @db.VarChar(255)
+  is_revoked         Boolean  @default(false)
+  expires_at         DateTime @db.Timestamptz(6)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  client             Client   @relation(fields: [client_id], references: [client_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("client_sessions")
+}
+
+model Manager {
+  manager_id    Int              @id @default(autoincrement())
+  full_name     String           @db.VarChar(150)
+  email         String           @unique @db.VarChar(100)
+  phone         String           @unique @db.VarChar(20)
+  password_hash String           @db.VarChar(100)
+  sessions      ManagerSession[]
+
+  @@index([email, password_hash], map: "idx_manager_email_password_hash")
+  @@index([phone], map: "idx_manager_phone")
+  @@map("managers")
+}
+
+model ManagerSession {
+  manager_session_id Int      @id @default(autoincrement())
+  manager_id         Int
+  refresh_token_hash String   @unique @db.VarChar(255)
+  is_revoked         Boolean  @default(false)
+  expires_at         DateTime @db.Timestamptz(6)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  manager            Manager  @relation(fields: [manager_id], references: [manager_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("manager_sessions")
+}
+
+model SpaceCategory {
+  category_id Int         @id @default(autoincrement())
+  name        String      @db.VarChar(100)
+  workspaces  Workspace[]
+
+  @@map("space_categories")
+}
+
+model Workspace {
+  workspace_id Int           @id @default(autoincrement())
+  category_id  Int
+  name         String        @db.VarChar(100)
+  capacity     Int
+  base_price   Decimal       @db.Decimal(10, 2)
+  is_active    Boolean       @default(true)
+  bookings     Booking[]
+  category     SpaceCategory @relation(fields: [category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("workspaces")
+}
+
+model Service {
+  service_id      Int              @id @default(autoincrement())
+  name            String           @db.VarChar
+  description     String?
+  price           Decimal          @db.Decimal(10, 2)
+  bookingServices BookingService[]
+
+  @@map("services")
+}
+
+model Booking {
+  booking_id      Int              @id @default(autoincrement())
+  client_id       Int
+  workspace_id    Int
+  subscription_id Int?
+  start_time      DateTime         @db.Timestamptz(6)
+  end_time        DateTime         @db.Timestamptz(6)
+  total_price     Decimal          @db.Decimal(10, 2)
+  bookingServices BookingService[]
+  client          Client           @relation(fields: [client_id], references: [client_id], onDelete: Cascade, onUpdate: NoAction)
+  subscription    Subscription?    @relation(fields: [subscription_id], references: [subscription_id], onUpdate: NoAction)
+  workspace       Workspace        @relation(fields: [workspace_id], references: [workspace_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([workspace_id], map: "idx_booking_workspace_id")
+  @@map("bookings")
+}
+
+model BookingService {
+  booking_id Int
+  service_id Int
+  quantity   Int     @default(1)
+  booking    Booking @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade, onUpdate: NoAction)
+  service    Service @relation(fields: [service_id], references: [service_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([booking_id, service_id])
+  @@map("booking_services")
+}
+
+model Tariff {
+  tariff_id     Int            @id @default(autoincrement())
+  name          String         @db.VarChar(100)
+  price         Decimal        @db.Decimal(10, 2)
+  details       Json
+  is_enabled    Boolean        @default(true)
+  subscriptions Subscription[]
+
+  @@map("tariffs")
+}
+
+model Subscription {
+  subscription_id Int       @id @default(autoincrement())
+  client_id       Int
+  tariff_id       Int
+  start_date      DateTime  @db.Date
+  end_date        DateTime? @db.Date
+  visits_left     Int?
+  is_cancelled    Boolean   @default(false)
+  bookings        Booking[]
+  client          Client    @relation(fields: [client_id], references: [client_id], onDelete: Cascade, onUpdate: NoAction)
+  tariff          Tariff    @relation(fields: [tariff_id], references: [tariff_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([client_id], map: "idx_subscription_client_id")
+  @@map("subscriptions")
+}
