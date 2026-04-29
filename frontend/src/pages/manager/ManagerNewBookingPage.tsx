@@ -7,7 +7,7 @@ export default function ManagerNewBookingPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState({
-    client_id: '',
+    client_identifier: '',
     workspace_id: '',
     date: '',
     start_time: '',
@@ -41,7 +41,7 @@ export default function ManagerNewBookingPage() {
     setError('');
     try {
       await api.post('/bookings', {
-        client_id: parseInt(form.client_id),
+        client_identifier: form.client_identifier,
         workspace_id: parseInt(form.workspace_id),
         start_time: `${form.date}T${form.start_time}:00`,
         end_time: `${form.date}T${form.end_time}:00`,
@@ -61,8 +61,8 @@ export default function ManagerNewBookingPage() {
         {error && <div className="error-msg">{error}</div>}
 
         <label>
-          ID клієнта
-          <input type="number" value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} required placeholder="Введіть ID клієнта" />
+          Email або телефон клієнта
+          <input type="text" value={form.client_identifier} onChange={(e) => setForm({ ...form, client_identifier: e.target.value })} required placeholder="email@example.com або +380..." />
         </label>
 
         <label>

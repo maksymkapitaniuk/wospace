@@ -27,7 +27,7 @@ function parseBookingError(err) {
 router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) => {
   try {
     const { id, role } = req.user;
-    const { period = 'upcoming', page = '1', limit = '10', from, to } = req.query;
+    const { period = 'upcoming', page = '1', limit = '10', from, to, search, category_id, service_id, price_min, price_max } = req.query;
     const take = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
     const skip = (Math.max(parseInt(page) || 1, 1) - 1) * take;
     const now = new Date();
@@ -40,10 +40,40 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
 
     if (from && to) {
       where.start_time = { gte: new Date(from), lt: new Date(to) };
+      if (period === 'past') {
+        where.end_time = { lt: now };
+      } else {
+        where.end_time = { gte: now };
+      }
     } else if (period === 'past') {
       where.end_time = { lt: now };
     } else {
       where.end_time = { gte: now };
+    }
+
+    if (category_id) {
+      where.workspace = { category_id: parseInt(category_id) };
+    }
+
+    if (service_id) {
+      const ids = String(service_id).split(',').map(Number).filter(n => !isNaN(n));
+      if (ids.length > 0) where.bookingServices = { some: { service_id: { in: ids } } };
+    }
+
+    if (price_min || price_max) {
+      where.total_price = {};
+      if (price_min) where.total_price.gte = parseFloat(price_min);
+      if (price_max) where.total_price.lte = parseFloat(price_max);
+    }
+
+    if (search && role !== 'client') {
+      where.client = {
+        OR: [
+          { full_name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      };
     }
 
     const [bookings, total] = await Promise.all([
@@ -56,7 +86,8 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
           subscription: true,
         },
         orderBy: { start_time: period === 'past' ? 'desc' : 'asc' },
-        ...( (from && to) ? {} : { skip, take } ),
+        skip,
+        take,
       }),
       prisma.booking.count({ where }),
     ]);
@@ -98,14 +129,29 @@ router.get('/:id', authenticate(['client', 'manager', 'admin']), async (req, res
 
 router.post('/', authenticate(['client', 'manager']), async (req, res) => {
   try {
-    const { workspace_id, start_time, end_time, services, subscription_id, client_id } = req.body;
+    const { workspace_id, start_time, end_time, services, subscription_id, client_id, client_identifier } = req.body;
 
     let targetClientId;
     if (req.user.role === 'manager') {
-      if (!client_id) {
-        return res.status(400).json({ error: 'Менеджер повинен вказати client_id' });
+      if (!client_id && !client_identifier) {
+        return res.status(400).json({ error: 'Менеджер повинен вказати клієнта (email або телефон)' });
       }
-      targetClientId = client_id;
+      if (client_id) {
+        targetClientId = client_id;
+      } else {
+        const client = await prisma.client.findFirst({
+          where: {
+            OR: [
+              { email: client_identifier },
+              { phone: client_identifier },
+            ],
+          },
+        });
+        if (!client) {
+          return res.status(404).json({ error: 'Клієнта з таким email або телефоном не знайдено' });
+        }
+        targetClientId = client.client_id;
+      }
     } else {
       targetClientId = req.user.id;
     }

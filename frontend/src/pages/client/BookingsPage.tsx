@@ -69,7 +69,7 @@ export default function BookingsPage() {
   // Calendar fetch
   const fetchCalendar = (start: Date, end: Date) => {
     setLoading(true);
-    api.get('/bookings', { params: { from: start.toISOString(), to: end.toISOString() } })
+    api.get('/bookings', { params: { from: start.toISOString(), to: end.toISOString(), limit: '200' } })
       .then((r) => setCalendarBookings(r.data.data))
       .finally(() => setLoading(false));
   };
