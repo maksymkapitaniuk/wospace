@@ -28,6 +28,12 @@ export default function SubscriptionsPage() {
     load();
   };
 
+  const handleCancel = async (subId: number) => {
+    if (!confirm('Ви впевнені, що хочете скасувати підписку?')) return;
+    await api.patch(`/tariffs/subscriptions/${subId}/cancel`);
+    load();
+  };
+
   if (loading) return <div className="loading">Завантаження...</div>;
 
   const now = new Date();
@@ -87,6 +93,9 @@ export default function SubscriptionsPage() {
                   <p><strong>Початок:</strong> {new Date(s.start_date).toLocaleDateString('uk-UA')}</p>
                   {s.end_date && <p><strong>Кінець:</strong> {new Date(s.end_date).toLocaleDateString('uk-UA')}</p>}
                   <p><strong>Залишилось візитів:</strong> {s.visits_left ?? '∞'}</p>
+                </div>
+                <div className="card-actions">
+                  <button onClick={() => handleCancel(s.subscription_id)} className="btn btn-sm btn-danger">Скасувати</button>
                 </div>
               </div>
             ))}

@@ -3,8 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import type { Workspace, Service } from '../../types';
 
+interface PricedWorkspace extends Workspace {
+  dynamic_price: number;
+}
+
 export default function NewBookingPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<PricedWorkspace[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState({
     workspace_id: '',
@@ -14,17 +18,33 @@ export default function NewBookingPage() {
   });
   const [selectedServices, setSelectedServices] = useState<{ service_id: number; quantity: number }[]>([]);
   const [error, setError] = useState('');
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [hasSub, setHasSub] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([
-      api.get('/workspaces'),
-      api.get('/services'),
-    ]).then(([ws, sv]) => {
-      setWorkspaces(ws.data);
-      setServices(sv.data);
+    api.get('/services').then((sv) => setServices(sv.data));
+    api.get('/tariffs/subscriptions').then((r) => {
+      const now = new Date();
+      const active = (r.data as { is_cancelled: boolean; visits_left: number | null; end_date: string | null }[]).some(
+        (s) => !s.is_cancelled && (s.visits_left === null || s.visits_left > 0) && (!s.end_date || new Date(s.end_date) >= now)
+      );
+      setHasSub(active);
     });
   }, []);
+
+  useEffect(() => {
+    if (!form.date) {
+      setWorkspaces([]);
+      setForm((prev) => ({ ...prev, workspace_id: '' }));
+      return;
+    }
+    setLoadingWorkspaces(true);
+    api.get('/workspaces/pricing', { params: { date: form.date } })
+      .then((r) => setWorkspaces(r.data))
+      .finally(() => setLoadingWorkspaces(false));
+    setForm((prev) => ({ ...prev, workspace_id: '' }));
+  }, [form.date]);
 
   const toggleService = (serviceId: number) => {
     setSelectedServices((prev) => {
@@ -60,22 +80,23 @@ export default function NewBookingPage() {
       <h1>Нове бронювання</h1>
       <form onSubmit={handleSubmit} className="form">
         {error && <div className="error-msg">{error}</div>}
-
-        <label>
-          Робоче місце
-          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required>
-            <option value="">Оберіть...</option>
-            {workspaces.map((w) => (
-              <option key={w.workspace_id} value={w.workspace_id}>
-                {w.name} ({w.category.name}, {w.capacity} місць, {w.base_price} грн/год)
-              </option>
-            ))}
-          </select>
-        </label>
+        {hasSub && <div className="info-msg">У вас є активна підписка — бронювання буде безкоштовним</div>}
 
         <label>
           Дата
           <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+        </label>
+
+        <label>
+          Робоче місце
+          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required disabled={!form.date || loadingWorkspaces}>
+            <option value="">{!form.date ? 'Спочатку оберіть дату' : loadingWorkspaces ? 'Завантаження...' : 'Оберіть...'}</option>
+            {workspaces.map((w) => (
+              <option key={w.workspace_id} value={w.workspace_id}>
+                {w.name} ({w.category.name}, {w.capacity} місць, {hasSub ? 0 : w.dynamic_price} грн/год)
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="form-row">
@@ -98,7 +119,7 @@ export default function NewBookingPage() {
                 <div key={s.service_id} className="service-row">
                   <label className="checkbox-label">
                     <input type="checkbox" checked={!!selected} onChange={() => toggleService(s.service_id)} />
-                    {s.name} — {s.price} грн
+                    {s.name} — {hasSub ? 0 : s.price} грн
                   </label>
                   {selected && (
                     <input type="number" min={1} value={selected.quantity} onChange={(e) => updateQuantity(s.service_id, parseInt(e.target.value))} className="qty-input" />

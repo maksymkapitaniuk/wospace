@@ -14,7 +14,7 @@ export default function PricesPage() {
     const [ws, sv, tr] = await Promise.all([
       api.get('/workspaces'),
       api.get('/services'),
-      api.get('/tariffs'),
+      api.get('/admin/tariffs'),
     ]);
     setWorkspaces(ws.data);
     setServices(sv.data);
@@ -42,6 +42,11 @@ export default function PricesPage() {
       await api.put(`/admin/tariffs/${editing.id}/price`, { price });
     }
     setEditing(null);
+    load();
+  };
+
+  const toggleTariff = async (tariffId: number) => {
+    await api.patch(`/admin/tariffs/${tariffId}/toggle`);
     load();
   };
 
@@ -124,11 +129,11 @@ export default function PricesPage() {
       <div className="table-wrapper">
         <table className="table">
           <thead>
-            <tr><th>Назва</th><th>Ціна</th><th>Дії</th></tr>
+            <tr><th>Назва</th><th>Ціна</th><th>Статус</th><th>Дії</th></tr>
           </thead>
           <tbody>
             {tariffs.map((t) => (
-              <tr key={t.tariff_id}>
+              <tr key={t.tariff_id} style={{ opacity: t.is_enabled ? 1 : 0.5 }}>
                 <td>{t.name}</td>
                 <td>
                   {editing?.type === 'tariff' && editing.id === t.tariff_id ? (
@@ -138,13 +143,23 @@ export default function PricesPage() {
                   )}
                 </td>
                 <td>
+                  <span className={`badge ${t.is_enabled ? 'badge-green' : 'badge-red'}`}>
+                    {t.is_enabled ? 'Активний' : 'Неактивний'}
+                  </span>
+                </td>
+                <td>
                   {editing?.type === 'tariff' && editing.id === t.tariff_id ? (
                     <div className="actions">
                       <button onClick={savePrice} className="btn btn-sm btn-primary">Зберегти</button>
                       <button onClick={() => setEditing(null)} className="btn btn-sm btn-outline">Скасувати</button>
                     </div>
                   ) : (
-                    <button onClick={() => startEdit('tariff', t.tariff_id, t.price)} className="btn btn-sm btn-outline">Змінити</button>
+                    <div className="actions">
+                      <button onClick={() => startEdit('tariff', t.tariff_id, t.price)} className="btn btn-sm btn-outline">Змінити ціну</button>
+                      <button onClick={() => toggleTariff(t.tariff_id)} className={`btn btn-sm ${t.is_enabled ? 'btn-danger' : 'btn-primary'}`}>
+                        {t.is_enabled ? 'Деактивувати' : 'Активувати'}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

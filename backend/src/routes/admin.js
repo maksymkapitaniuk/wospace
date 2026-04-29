@@ -203,4 +203,33 @@ router.put('/tariffs/:id/price', authenticate(['admin']), async (req, res) => {
   }
 });
 
+router.get('/tariffs', authenticate(['admin']), async (req, res) => {
+  try {
+    const tariffs = await prisma.tariff.findMany({ orderBy: { name: 'asc' } });
+    res.json(tariffs);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Помилка сервера' });
+  }
+});
+
+router.patch('/tariffs/:id/toggle', authenticate(['admin']), async (req, res) => {
+  try {
+    const tariffId = parseInt(req.params.id);
+    const tariff = await prisma.tariff.findUnique({ where: { tariff_id: tariffId } });
+    if (!tariff) {
+      return res.status(404).json({ error: 'Тариф не знайдено' });
+    }
+
+    const updated = await prisma.tariff.update({
+      where: { tariff_id: tariffId },
+      data: { is_enabled: !tariff.is_enabled },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Помилка сервера' });
+  }
+});
+
 module.exports = router;

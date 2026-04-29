@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         setUser(JSON.parse(stored));
-      } catch { /* ignore */ }
+      } catch {}
     }
     setLoading(false);
   }, []);
@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (refreshToken) {
         await api.post('/auth/logout', { refreshToken });
       }
-    } catch { /* ignore */ }
+    } catch {}
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');

@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import type { Workspace, Service } from '../../types';
 
+interface PricedWorkspace extends Workspace {
+  dynamic_price: number;
+}
+
 export default function ManagerNewBookingPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<PricedWorkspace[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState({
     client_identifier: '',
@@ -15,14 +19,44 @@ export default function ManagerNewBookingPage() {
   });
   const [selectedServices, setSelectedServices] = useState<{ service_id: number; quantity: number }[]>([]);
   const [error, setError] = useState('');
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [hasSub, setHasSub] = useState(false);
+  const [checkingSub, setCheckingSub] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([api.get('/workspaces'), api.get('/services')]).then(([ws, sv]) => {
-      setWorkspaces(ws.data);
-      setServices(sv.data);
-    });
+    api.get('/services').then((sv) => setServices(sv.data));
   }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const id = form.client_identifier.trim();
+    if (!id) {
+      setHasSub(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      setCheckingSub(true);
+      api.get('/tariffs/subscriptions/check', { params: { identifier: id } })
+        .then((r) => setHasSub(r.data.has_subscription))
+        .catch(() => setHasSub(false))
+        .finally(() => setCheckingSub(false));
+    }, 500);
+  }, [form.client_identifier]);
+
+  useEffect(() => {
+    if (!form.date || !form.client_identifier.trim()) {
+      setWorkspaces([]);
+      setForm((prev) => ({ ...prev, workspace_id: '' }));
+      return;
+    }
+    setLoadingWorkspaces(true);
+    api.get('/workspaces/pricing', { params: { date: form.date } })
+      .then((r) => setWorkspaces(r.data))
+      .finally(() => setLoadingWorkspaces(false));
+    setForm((prev) => ({ ...prev, workspace_id: '' }));
+  }, [form.date, form.client_identifier]);
 
   const toggleService = (serviceId: number) => {
     setSelectedServices((prev) => {
@@ -59,27 +93,29 @@ export default function ManagerNewBookingPage() {
       <h1>Нове бронювання (менеджер)</h1>
       <form onSubmit={handleSubmit} className="form">
         {error && <div className="error-msg">{error}</div>}
+        {hasSub && <div className="info-msg">Клієнт має активну підписку — бронювання буде безкоштовним</div>}
 
         <label>
           Email або телефон клієнта
           <input type="text" value={form.client_identifier} onChange={(e) => setForm({ ...form, client_identifier: e.target.value })} required placeholder="email@example.com або +380..." />
-        </label>
-
-        <label>
-          Робоче місце
-          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required>
-            <option value="">Оберіть...</option>
-            {workspaces.map((w) => (
-              <option key={w.workspace_id} value={w.workspace_id}>
-                {w.name} ({w.category.name}, {w.capacity} місць, {w.base_price} грн/год)
-              </option>
-            ))}
-          </select>
+          {checkingSub && <span className="field-hint">Перевірка підписки...</span>}
         </label>
 
         <label>
           Дата
           <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+        </label>
+
+        <label>
+          Робоче місце
+          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required disabled={!form.date || !form.client_identifier.trim() || loadingWorkspaces}>
+            <option value="">{!form.client_identifier.trim() ? 'Спочатку введіть клієнта' : !form.date ? 'Спочатку оберіть дату' : loadingWorkspaces ? 'Завантаження...' : 'Оберіть...'}</option>
+            {workspaces.map((w) => (
+              <option key={w.workspace_id} value={w.workspace_id}>
+                {w.name} ({w.category.name}, {w.capacity} місць, {hasSub ? 0 : w.dynamic_price} грн/год)
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="form-row">
@@ -102,7 +138,7 @@ export default function ManagerNewBookingPage() {
                 <div key={s.service_id} className="service-row">
                   <label className="checkbox-label">
                     <input type="checkbox" checked={!!selected} onChange={() => toggleService(s.service_id)} />
-                    {s.name} — {s.price} грн
+                    {s.name} — {hasSub ? 0 : s.price} грн
                   </label>
                   {selected && (
                     <input type="number" min={1} value={selected.quantity} onChange={(e) => updateQuantity(s.service_id, parseInt(e.target.value))} className="qty-input" />

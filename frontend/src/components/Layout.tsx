@@ -27,11 +27,15 @@ export default function Layout() {
                 <Link to="/bookings">Мої бронювання</Link>
                 <Link to="/bookings/new">Забронювати</Link>
                 <Link to="/subscriptions">Підписки</Link>
+                <Link to="/profile">Профіль</Link>
               </>
             )}
             {user?.role === 'manager' && (
               <>
                 <Link to="/manager/bookings">Бронювання</Link>
+                <Link to="/manager/schedule">Завантаженість</Link>
+                <Link to="/manager/analytics">Аналітика</Link>
+                <Link to="/manager/users">Користувачі</Link>
                 <Link to="/manager/bookings/new">Нове бронювання</Link>
               </>
             )}
@@ -40,6 +44,8 @@ export default function Layout() {
                 <Link to="/admin/managers">Менеджери</Link>
                 <Link to="/admin/administrators">Адміністратори</Link>
                 <Link to="/admin/prices">Ціни</Link>
+                <Link to="/admin/users">Користувачі</Link>
+                <Link to="/admin/profile">Профіль</Link>
               </>
             )}
             {user && (

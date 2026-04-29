@@ -5,6 +5,9 @@ import type { Booking, SpaceCategory, Service } from '../../types';
 
 const PER_PAGE = 15;
 
+type SortField = 'client_name' | 'start_time' | 'end_time' | 'total_price';
+type SortDir = 'asc' | 'desc';
+
 interface Filters {
   search: string;
   dateFrom: string;
@@ -29,6 +32,8 @@ export default function ManagerBookingsPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [applied, setApplied] = useState<Filters>(emptyFilters);
+  const [sortBy, setSortBy] = useState<SortField | ''>('');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   useEffect(() => {
     Promise.all([api.get('/categories'), api.get('/services')]).then(([c, s]) => {
@@ -45,8 +50,9 @@ export default function ManagerBookingsPage() {
     if (applied.priceMax) p.price_max = applied.priceMax;
     if (applied.category_id) p.category_id = applied.category_id;
     if (applied.service_ids.length > 0) p.service_id = applied.service_ids.join(',');
+    if (sortBy) { p.sort_by = sortBy; p.sort_dir = sortDir; }
     return p;
-  }, [applied]);
+  }, [applied, sortBy, sortDir]);
 
   const fetchUpcoming = useCallback((page: number) =>
     api.get('/bookings', { params: buildParams('upcoming', page) }).then((r) => {
@@ -90,18 +96,32 @@ export default function ManagerBookingsPage() {
   const upcomingPages = Math.ceil(upcomingTotal / PER_PAGE);
   const pastPages = Math.ceil(pastTotal / PER_PAGE);
 
+  const toggleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortIndicator = (field: SortField) => {
+    if (sortBy !== field) return ' ↕';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
+
   const renderTable = (bookings: Booking[], showActions: boolean) => (
     <div className="table-wrapper">
       <table className="table">
         <thead>
           <tr>
             <th>Email</th>
-            <th>Клієнт</th>
+            <th className="sortable-th" onClick={() => toggleSort('client_name')}>Клієнт{sortIndicator('client_name')}</th>
             <th>Робоче місце</th>
             <th>Категорія</th>
-            <th>Початок</th>
-            <th>Кінець</th>
-            <th>Ціна</th>
+            <th className="sortable-th" onClick={() => toggleSort('start_time')}>Початок{sortIndicator('start_time')}</th>
+            <th className="sortable-th" onClick={() => toggleSort('end_time')}>Кінець{sortIndicator('end_time')}</th>
+            <th className="sortable-th" onClick={() => toggleSort('total_price')}>Ціна{sortIndicator('total_price')}</th>
             <th>Послуги</th>
             {showActions && <th>Дії</th>}
           </tr>

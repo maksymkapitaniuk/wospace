@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../prismaClient');
 const { authenticate } = require('../middleware/auth');
+const { getDynamicPrice } = require('./workspaces');
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ function parseBookingError(err) {
 router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) => {
   try {
     const { id, role } = req.user;
-    const { period = 'upcoming', page = '1', limit = '10', from, to, search, category_id, service_id, price_min, price_max } = req.query;
+    const { period = 'upcoming', page = '1', limit = '10', from, to, search, category_id, service_id, price_min, price_max, sort_by, sort_dir } = req.query;
     const take = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
     const skip = (Math.max(parseInt(page) || 1, 1) - 1) * take;
     const now = new Date();
@@ -42,6 +43,7 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
       where.start_time = { gte: new Date(from), lt: new Date(to) };
       if (period === 'past') {
         where.end_time = { lt: now };
+      } else if (period === 'all') {
       } else {
         where.end_time = { gte: now };
       }
@@ -76,6 +78,20 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
       };
     }
 
+    let orderBy;
+    const dir = sort_dir === 'asc' ? 'asc' : sort_dir === 'desc' ? 'desc' : undefined;
+    if (sort_by === 'client_name' && dir) {
+      orderBy = { client: { full_name: dir } };
+    } else if (sort_by === 'start_time' && dir) {
+      orderBy = { start_time: dir };
+    } else if (sort_by === 'end_time' && dir) {
+      orderBy = { end_time: dir };
+    } else if (sort_by === 'total_price' && dir) {
+      orderBy = { total_price: dir };
+    } else {
+      orderBy = { start_time: period === 'past' ? 'desc' : 'asc' };
+    }
+
     const [bookings, total] = await Promise.all([
       prisma.booking.findMany({
         where,
@@ -85,7 +101,7 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
           bookingServices: { include: { service: true } },
           subscription: true,
         },
-        orderBy: { start_time: period === 'past' ? 'desc' : 'asc' },
+        orderBy,
         skip,
         take,
       }),
@@ -181,9 +197,8 @@ router.post('/', authenticate(['client', 'manager']), async (req, res) => {
 
     const startHour = startDate.getHours();
     const endHour = endDate.getHours();
-    const endMin = endDate.getMinutes();
-    if (startHour < 8 || startHour >= 20 || endHour > 20 || (endHour === 20 && endMin > 0)) {
-      return res.status(400).json({ error: 'Бронювання можливе лише в робочий час: з 08:00 до 20:00' });
+    if (startHour < 8 || startHour >= 20 || endHour >= 20) {
+      return res.status(400).json({ error: 'Бронювання можливе лише в робочий час: з 08:00 до 19:59' });
     }
 
     const workspace = await prisma.workspace.findUnique({ where: { workspace_id } });
@@ -203,7 +218,8 @@ router.post('/', authenticate(['client', 'manager']), async (req, res) => {
     }
 
     const hours = (endDate - startDate) / (1000 * 60 * 60);
-    let total_price = parseFloat(workspace.base_price) * hours;
+    const pricePerHour = await getDynamicPrice(workspace_id, workspace.base_price, startDate);
+    let total_price = pricePerHour * hours;
 
     let servicesToCreate = [];
     if (services && services.length > 0) {
@@ -304,9 +320,8 @@ router.put('/:id', authenticate(['client', 'manager']), async (req, res) => {
 
     const startHour = startDate.getHours();
     const endHour = endDate.getHours();
-    const endMin = endDate.getMinutes();
-    if (startHour < 8 || startHour >= 20 || endHour > 20 || (endHour === 20 && endMin > 0)) {
-      return res.status(400).json({ error: 'Бронювання можливе лише в робочий час: з 08:00 до 20:00' });
+    if (startHour < 8 || startHour >= 20 || endHour >= 20) {
+      return res.status(400).json({ error: 'Бронювання можливе лише в робочий час: з 08:00 до 19:59' });
     }
 
     const conflict = await prisma.booking.findFirst({
@@ -323,7 +338,8 @@ router.put('/:id', authenticate(['client', 'manager']), async (req, res) => {
 
     const workspace = await prisma.workspace.findUnique({ where: { workspace_id: wsId } });
     const hours = (endDate - startDate) / (1000 * 60 * 60);
-    let total_price = parseFloat(workspace.base_price) * hours;
+    const pricePerHour = await getDynamicPrice(wsId, workspace.base_price, startDate);
+    let total_price = pricePerHour * hours;
 
     if (services) {
       await prisma.bookingService.deleteMany({ where: { booking_id: bookingId } });

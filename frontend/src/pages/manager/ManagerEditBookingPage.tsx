@@ -3,37 +3,54 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api';
 import type { Booking, Workspace, Service } from '../../types';
 
+interface PricedWorkspace extends Workspace {
+  dynamic_price: number;
+}
+
 export default function ManagerEditBookingPage() {
   const { id } = useParams();
   const [booking, setBooking] = useState<Booking | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<PricedWorkspace[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [form, setForm] = useState({ workspace_id: '', date: '', start_time: '', end_time: '' });
   const [selectedServices, setSelectedServices] = useState<{ service_id: number; quantity: number }[]>([]);
   const [error, setError] = useState('');
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [initialDate, setInitialDate] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
     Promise.all([
       api.get(`/bookings/${id}`),
-      api.get('/workspaces'),
       api.get('/services'),
-    ]).then(([bk, ws, sv]) => {
+    ]).then(([bk, sv]) => {
       const b = bk.data as Booking;
       setBooking(b);
-      setWorkspaces(ws.data);
       setServices(sv.data);
       const start = new Date(b.start_time);
       const end = new Date(b.end_time);
+      const dateStr = `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`;
       setForm({
         workspace_id: String(b.workspace_id),
-        date: start.toISOString().split('T')[0],
+        date: dateStr,
         start_time: start.toTimeString().slice(0, 5),
         end_time: end.toTimeString().slice(0, 5),
       });
+      setInitialDate(dateStr);
       setSelectedServices(b.bookingServices.map((bs) => ({ service_id: bs.service_id, quantity: bs.quantity })));
     });
   }, [id]);
+
+  useEffect(() => {
+    if (!form.date) return;
+    setLoadingWorkspaces(true);
+    api.get('/workspaces/pricing', { params: { date: form.date } })
+      .then((r) => setWorkspaces(r.data))
+      .finally(() => setLoadingWorkspaces(false));
+    if (form.date !== initialDate) {
+      setForm((prev) => ({ ...prev, workspace_id: '' }));
+    }
+  }, [form.date]);
 
   const toggleService = (serviceId: number) => {
     setSelectedServices((prev) => {
@@ -74,19 +91,20 @@ export default function ManagerEditBookingPage() {
         {error && <div className="error-msg">{error}</div>}
 
         <label>
-          Робоче місце
-          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required>
-            {workspaces.map((w) => (
-              <option key={w.workspace_id} value={w.workspace_id}>
-                {w.name} ({w.category.name}, {w.base_price} грн/год)
-              </option>
-            ))}
-          </select>
+          Дата
+          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
         </label>
 
         <label>
-          Дата
-          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+          Робоче місце
+          <select value={form.workspace_id} onChange={(e) => setForm({ ...form, workspace_id: e.target.value })} required disabled={loadingWorkspaces}>
+            <option value="">{loadingWorkspaces ? 'Завантаження...' : 'Оберіть...'}</option>
+            {workspaces.map((w) => (
+              <option key={w.workspace_id} value={w.workspace_id}>
+                {w.name} ({w.category.name}, {w.dynamic_price} грн/год)
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="form-row">

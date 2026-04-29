@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api';
 import type { Booking } from '../../types';
@@ -32,7 +32,7 @@ function formatDate(d: Date) {
 }
 
 function toISODate(d: Date) {
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
 }
 
 type ViewMode = 'calendar' | 'cards';
@@ -41,12 +41,14 @@ export default function BookingsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem('bookingsView') as ViewMode) || 'calendar');
   const [loading, setLoading] = useState(true);
 
-  // Calendar state
   const [calendarBookings, setCalendarBookings] = useState<Booking[]>([]);
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [tooltip, setTooltip] = useState<{ booking: Booking; x: number; y: number } | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(50);
+  const headerRef = useCallback((node: HTMLDivElement | null) => {
+    if (node) setHeaderHeight(node.getBoundingClientRect().height);
+  }, []);
 
-  // Cards state
   const [upcoming, setUpcoming] = useState<Booking[]>([]);
   const [past, setPast] = useState<Booking[]>([]);
   const [upcomingTotal, setUpcomingTotal] = useState(0);
@@ -66,15 +68,13 @@ export default function BookingsPage() {
     localStorage.setItem('bookingsView', mode);
   };
 
-  // Calendar fetch
   const fetchCalendar = (start: Date, end: Date) => {
     setLoading(true);
-    api.get('/bookings', { params: { from: start.toISOString(), to: end.toISOString(), limit: '200' } })
+    api.get('/bookings', { params: { from: start.toISOString(), to: end.toISOString(), period: 'all', limit: '200' } })
       .then((r) => setCalendarBookings(r.data.data))
       .finally(() => setLoading(false));
   };
 
-  // Cards fetch
   const fetchUpcoming = (page: number) =>
     api.get('/bookings', { params: { period: 'upcoming', page, limit: PER_PAGE } }).then((r) => {
       setUpcoming(r.data.data);
@@ -157,9 +157,9 @@ export default function BookingsPage() {
           {loading ? (
             <div className="loading">Завантаження...</div>
           ) : (
-            <div className="calendar-wrapper">
+            <div className="calendar-wrapper" onClick={() => setTooltip(null)}>
               <div className="calendar-grid" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
-                <div className="calendar-corner" />
+                <div className="calendar-corner" ref={headerRef} />
                 {weekDays.map((d, i) => {
                   const isToday = toISODate(d) === toISODate(new Date());
                   return (
@@ -200,9 +200,8 @@ export default function BookingsPage() {
                     <div
                       key={b.booking_id}
                       className="calendar-event"
-                      style={{ top: `calc(44px + ${top}px)`, left, width, height: `${Math.max(height, 20)}px`, background: bg, opacity: isPast ? 0.5 : 0.9 }}
-                      onMouseEnter={(e) => setTooltip({ booking: b, x: e.clientX, y: e.clientY })}
-                      onMouseLeave={() => setTooltip(null)}
+                      style={{ top: `${headerHeight + top}px`, left, width, height: `${Math.max(height, 20)}px`, background: bg, opacity: isPast ? 0.5 : 0.9 }}
+                      onClick={(e) => { e.stopPropagation(); setTooltip(tooltip?.booking.booking_id === b.booking_id ? null : { booking: b, x: e.clientX, y: e.clientY }); }}
                     >
                       <span className="calendar-event-title">{b.workspace.name}</span>
                       {height >= 40 && <span className="calendar-event-client">{b.workspace.category.name}</span>}
@@ -212,7 +211,7 @@ export default function BookingsPage() {
               </div>
 
               {tooltip && (
-                <div className="calendar-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}>
+                <div className="calendar-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y + 12 }} onClick={(e) => e.stopPropagation()}>
                   <strong>{tooltip.booking.workspace.name}</strong> ({tooltip.booking.workspace.category.name})
                   <br />{new Date(tooltip.booking.start_time).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })} — {new Date(tooltip.booking.end_time).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
                   <br />Ціна: {tooltip.booking.total_price} грн

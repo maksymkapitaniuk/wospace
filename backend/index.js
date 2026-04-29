@@ -9,6 +9,8 @@ const workspaceRoutes = require('./src/routes/workspaces');
 const serviceRoutes = require('./src/routes/services');
 const categoryRoutes = require('./src/routes/categories');
 const tariffRoutes = require('./src/routes/tariffs');
+const analyticsRoutes = require('./src/routes/analytics');
+const userRoutes = require('./src/routes/users');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,6 +25,8 @@ app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/tariffs', tariffRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/users', userRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
