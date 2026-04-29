@@ -41,9 +41,9 @@ router.get('/', authenticate(['client', 'manager', 'admin']), async (req, res) =
     if (from && to) {
       where.start_time = { gte: new Date(from), lt: new Date(to) };
     } else if (period === 'past') {
-      where.start_time = { lt: now };
+      where.end_time = { lt: now };
     } else {
-      where.start_time = { gte: now };
+      where.end_time = { gte: now };
     }
 
     const [bookings, total] = await Promise.all([
